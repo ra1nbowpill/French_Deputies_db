@@ -162,7 +162,6 @@ def info_to_str_list(info):
             to_write += [info[k]]
     return to_write
 
-
 # keys of dictionary returned by extract_info
 res_key = [
     'name', 'email', 'phone',
@@ -171,7 +170,8 @@ res_key = [
     'group', 'group_url',
     'commission', 'commission_url',
     'substitute', 'fundings',
-    'decl_interet_activite_url', 'address'
+    'decl_interet_activite_url', 'address',
+    'info_url'
 ]
 
 
@@ -179,43 +179,60 @@ base = 'http://www2.assemblee-nationale.fr'
 liste = '/deputes/liste/tableau'
 
 
-# get the web page containing the list of depties
+# where to write the output
+output_file = 'deputies.csv'
+
+already_written = []
+
+if not os.path.exists(output_file):
+    output_not_existed = True
+else:
+    output_not_existed = False
+    with open(output_file, 'r') as csv_file: 
+        file_reader = csv.DictReader(open(output_file), delimiter=';', quotechar='"')
+        for row in file_reader:
+            already_written += [row['info_url']]
+
+csv_file = open(output_file, 'a', newline='')
+file_writer = csv.writer(csv_file, delimiter=';', quotechar='"', quoting=csv.QUOTE_ALL)
+if output_not_existed:
+    file_writer.writerow([k for k in res_key])
+
+sys.stderr.write("🌳  Retrieving deputies list ... ")
+# get the web page containing the list of deputies
 document = get_url(base + liste)
 # extracting web addresses to deputies file
 addresses = get_addresses(document)
+sys.stderr.write("Done\n")
 
-# where to write the output
-output_file = 'deputies.csv'
-# file containing already extracted deputies
-already_written_file = 'already_written.txt'
+addresses = set(addresses) - set(already_written)
 
-csv_file = open(output_file, 'a', newline='')
-file_writer = csv.writer(csv_file, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
+if len(addresses) == 0:
+    sys.stderr.write("🌍  Everything was already extracted\n")
+    csv_file.close()
+    exit()
 
-if not os.path.exists(already_written_file):
-    os.popen("touch {}".format(already_written_file)).read()
+sys.stderr.write("📝  Retrieving information ...\n")
 
-already_written_list = []
-
-with open(already_written_file, 'r') as already_written:
-    for l in already_written:
-        already_written_list += [l.strip()]
-
-already_written = open(already_written_file, 'a')
+toolbar_width = 40
+# setup toolbar
+sys.stderr.write("[%s]" % (" " * toolbar_width))
+sys.stderr.flush()
+sys.stderr.write("\b" * (toolbar_width+1)) # return to start of line, after '['
 
 for i, address in enumerate(addresses):
-    if address in already_written_list:
-        continue
-
-    sys.stderr.write("{}/{}\n".format(i, len(addresses)))
+    if i % int(len(addresses)/toolbar_width) == 0:
+        sys.stderr.write("-")
+        sys.stderr.flush()
+        # sys.stderr.write("{}/{}\n".format(i, len(addresses)))
 
     deputy_page = get_url(base + address)
     info = extract_info(deputy_page)
+    info["info_url"] = address
     file_writer.writerow(info_to_str_list(info))
-    already_written.write("{}\n".format(address))
 
-    if i == 5:
-        break
+sys.stderr.write("\n")
 
 csv_file.close()
-already_written.close()
+
+sys.stderr.write("🌍  It's all done\n")
