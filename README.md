@@ -4,7 +4,7 @@ This python script aim at extracting informations about french deputies from thi
 
 This script was made to be used by association but everyone is pleased to use this script. I am in no way responsible of how the informations collected are used.
 
-The last extracted db is available as `deputies.csv`. (last extraction 15 april 2017 ~18:00)
+The last extracted db is available as `deputies.csv`. (last extraction : 16 april 2017)
 
 FYI the columns are
 ```python
