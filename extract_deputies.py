@@ -103,6 +103,9 @@ def extract_info(deputy_page):
             res["date_of_birth"] = re.sub("Née? le (.*) à .*", "\\1", bio)
             res["place_of_birth"] = re.sub("Née? le .* à (.*)", "\\1", bio)
 
+            if len(pp.find_all("li")) > 1:
+                res['occupation'] = pp.find_all("li")[1].text.strip()
+
         elif "suppl" in dt_val:
             res["substitute"] = pp.text.strip()
 
@@ -174,7 +177,7 @@ res_key = [
     'name', 'email', 'phone',
     'date_of_birth', 'place_of_birth',
     'circonscription', 'state',
-    'group', 'group_url',
+    'occupation', 'group', 'group_url',
     'commission', 'commission_url',
     'substitute', 'fundings',
     'decl_interet_activite_url', 'address',
