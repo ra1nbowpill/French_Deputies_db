@@ -1,12 +1,15 @@
 # coding: utf8
 
-import urllib.request
-from bs4 import BeautifulSoup
 import re
-import sys
-import unicodedata
-import csv
 import os
+import sys
+import csv
+import unicodedata
+import urllib.request
+
+from tqdm import tqdm
+from bs4 import BeautifulSoup
+
 
 def fix_auto_closing(doc):
     """
@@ -39,15 +42,17 @@ def get_url(url):
     return BeautifulSoup(doc, 'html.parser')
 
 
-def get_addresses(page_deputies_table):
+def get_urls(page_deputies_table):
     """
-    The content of this url : http://www2.assemblee-nationale.fr/deputes/liste/tableau
+    Url in the rows of the following webpage:
+      http://www2.assemblee-nationale.fr/deputes/liste/tableau
     :param page_deputies_table:
     :type page_deputies_table: BeautifulSoup
-    :return: addresses to deputies file
+    :return: urls to deputies info page
     :rtype: list of str
     """
-    return [tr.a["href"] for tr in page_deputies_table.table.tbody.find_all("tr")]
+    rows = page_deputies_table.table.tbody.find_all("tr")
+    return [tr.a["href"] for tr in rows]
 
 
 def norm_str(str_):
@@ -63,7 +68,7 @@ def extract_info(deputy_page):
     """
     Extract information of a deputy
     It's mostly a big hack, this is non reusable code
-    :param deputy_page: content of deputy web page (http://www2.assemblee-nationale.fr/deputes/fiche/*)
+    :param deputy_page: content of deputy webpage
     :type deputy_page: BeautifulSoup
     :return: dictionary of information
     :rtype: dict
@@ -71,7 +76,8 @@ def extract_info(deputy_page):
     res = dict()
 
     # extract info from header
-    header = [w for w in deputy_page.find_all(class_="titre-bandeau-bleu")[0].text.split('\n') if w != ""][:3]
+    header = deputy_page.find_all(class_="titre-bandeau-bleu")[0]
+    header = [w for w in header.text.split('\n') if w != ""][:3]
     res["name"] = header[0]
     res["circonscription"] = header[1]
     res["state"] = header[2]
@@ -144,7 +150,7 @@ def info_to_str_list(info):
     to_write = []
     # custom to_string
     for k in res_key:
-        if not k in info:
+        if k not in info:
             to_write += [""]
             continue
 
@@ -162,6 +168,7 @@ def info_to_str_list(info):
             to_write += [info[k]]
     return to_write
 
+
 # keys of dictionary returned by extract_info
 res_key = [
     'name', 'email', 'phone',
@@ -178,61 +185,48 @@ res_key = [
 base = 'http://www2.assemblee-nationale.fr'
 liste = '/deputes/liste/tableau'
 
+if __name__ == '__main__':
 
-# where to write the output
-output_file = 'deputies.csv'
+    # where to write the output
+    output_file = 'deputies.csv'
 
-already_written = []
+    already_written = []
 
-if not os.path.exists(output_file):
-    output_not_existed = True
-else:
-    output_not_existed = False
-    with open(output_file, 'r') as csv_file: 
-        file_reader = csv.DictReader(open(output_file), delimiter=';', quotechar='"')
-        for row in file_reader:
-            already_written += [row['info_url']]
+    write_header = True
+    if os.path.exists(output_file):
+        write_header = False
+        with open(output_file, 'r') as csv_file:
+            file_reader = csv.DictReader(
+                csv_file, delimiter=';', quotechar='"')
+            for row in file_reader:
+                already_written += [row['info_url']]
 
-csv_file = open(output_file, 'a', newline='')
-file_writer = csv.writer(csv_file, delimiter=';', quotechar='"', quoting=csv.QUOTE_ALL)
-if output_not_existed:
-    file_writer.writerow([k for k in res_key])
+    with open(output_file, 'a', newline='') as csv_file:
+        file_writer = csv.writer(
+            csv_file, delimiter=';', quotechar='"', quoting=csv.QUOTE_ALL)
+        if write_header:
+            file_writer.writerow([k for k in res_key])
 
-sys.stderr.write("🌳  Retrieving deputies list ... ")
-# get the web page containing the list of deputies
-document = get_url(base + liste)
-# extracting web addresses to deputies file
-addresses = get_addresses(document)
-sys.stderr.write("Done\n")
+        sys.stderr.write("🌳  Retrieving deputies list ... ")
+        # get the web page containing the list of deputies
+        document = get_url(base + liste)
+        # extracting urls to deputies info page
+        urls = get_urls(document)
+        sys.stderr.write("Done\n")
 
-addresses = set(addresses) - set(already_written)
+        urls = set(urls) - set(already_written)
 
-if len(addresses) == 0:
-    sys.stderr.write("🌍  Everything was already extracted\n")
-    csv_file.close()
-    exit()
+        if len(urls) == 0:
+            sys.stderr.write("🌍  Everything was already extracted\n")
+            csv_file.close()
+            exit()
 
-sys.stderr.write("📝  Retrieving information ...\n")
+        sys.stderr.write("📝  Retrieving information ...\n")
 
-toolbar_width = 40
-# setup toolbar
-sys.stderr.write("[%s]" % (" " * toolbar_width))
-sys.stderr.flush()
-sys.stderr.write("\b" * (toolbar_width+1)) # return to start of line, after '['
+        for url in tqdm(urls):
+            deputy_page = get_url(base + url)
+            info = extract_info(deputy_page)
+            info["info_url"] = url
+            file_writer.writerow(info_to_str_list(info))
 
-for i, address in enumerate(addresses):
-    if i % int(len(addresses)/toolbar_width) == 0:
-        sys.stderr.write("-")
-        sys.stderr.flush()
-        # sys.stderr.write("{}/{}\n".format(i, len(addresses)))
-
-    deputy_page = get_url(base + address)
-    info = extract_info(deputy_page)
-    info["info_url"] = address
-    file_writer.writerow(info_to_str_list(info))
-
-sys.stderr.write("\n")
-
-csv_file.close()
-
-sys.stderr.write("🌍  It's all done\n")
+    sys.stderr.write("🌍  It's all done\n")
